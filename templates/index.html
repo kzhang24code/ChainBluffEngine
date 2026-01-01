@@ -303,7 +303,8 @@
             socket.on('ai_action', (data) => {
                 addLog(`AI: ${data.action}${data.amount > 0 ? ' $' + data.amount.toFixed(0) : ''}`, data.action);
                 if (data.action === 'fold') {
-                    document.getElementById('aiFoldedOverlay').classList.remove('hidden');
+                    const overlay = document.getElementById('aiFoldedOverlay');
+                    if (overlay) overlay.classList.remove('hidden');
                 } else if (data.amount > 0) {
                     updateBet('ai', data.amount);
                 }
@@ -325,10 +326,12 @@
             socket.on('player_folded', (data) => {
                 const isAi = data.player_id !== socket.id;
                 if (isAi) {
-                    document.getElementById('aiFoldedOverlay').classList.remove('hidden');
+                    const overlay = document.getElementById('aiFoldedOverlay');
+                    if (overlay) overlay.classList.remove('hidden');
                     addLog('AI folded!', 'fold');
                 } else {
-                    document.getElementById('playerFoldedOverlay').classList.remove('hidden');
+                    const overlay = document.getElementById('playerFoldedOverlay');
+                    if (overlay) overlay.classList.remove('hidden');
                     addLog('You folded', 'fold');
                 }
             });
@@ -385,7 +388,8 @@
             });
             addLog(`You: ${action}${amount > 0 && action === 'raise' ? ' $' + amount : ''}`, action);
             if (action === 'fold') {
-                document.getElementById('playerFoldedOverlay').classList.remove('hidden');
+                const overlay = document.getElementById('playerFoldedOverlay');
+                if (overlay) overlay.classList.remove('hidden');
             } else if (amount > 0 || action === 'call') {
                 updateBet('player', amount > 0 ? amount : 10);
             }
@@ -415,15 +419,21 @@
         }
         
         function clearBets() {
-            document.getElementById('aiBet').classList.add('hidden');
-            document.getElementById('playerBet').classList.add('hidden');
-            document.getElementById('aiBetAmount').textContent = '0';
-            document.getElementById('playerBetAmount').textContent = '0';
+            const aiBet = document.getElementById('aiBet');
+            const playerBet = document.getElementById('playerBet');
+            if (aiBet) aiBet.classList.add('hidden');
+            if (playerBet) playerBet.classList.add('hidden');
+            const aiBetAmount = document.getElementById('aiBetAmount');
+            const playerBetAmount = document.getElementById('playerBetAmount');
+            if (aiBetAmount) aiBetAmount.textContent = '0';
+            if (playerBetAmount) playerBetAmount.textContent = '0';
         }
         
         function clearFolded() {
-            document.getElementById('aiFoldedOverlay').classList.add('hidden');
-            document.getElementById('playerFoldedOverlay').classList.add('hidden');
+            const aiOverlay = document.getElementById('aiFoldedOverlay');
+            const playerOverlay = document.getElementById('playerFoldedOverlay');
+            if (aiOverlay) aiOverlay.classList.add('hidden');
+            if (playerOverlay) playerOverlay.classList.add('hidden');
         }
 
         function requestGtoAdvice() {

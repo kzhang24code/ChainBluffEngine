@@ -390,6 +390,13 @@ class PokerGame:
     def determine_winner(self) -> Dict:
         active_players = [p for p in self.players if not p.is_folded]
         
+        if len(active_players) == 0:
+            return {
+                'winner': {'id': None, 'name': 'No winner'},
+                'hand_rank': 'no active players',
+                'pot': self.pot
+            }
+        
         if len(active_players) == 1:
             winner = active_players[0]
             winner.chips += self.pot
@@ -413,6 +420,10 @@ class PokerGame:
                 best_rank = rank
                 best_name = name
                 best_kickers = kickers
+        
+        if best_player is None:
+            best_player = active_players[0]
+            best_name = 'high card'
         
         best_player.chips += self.pot
         
