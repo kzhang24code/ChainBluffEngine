@@ -38,6 +38,7 @@ class Player:
     current_bet: float = 0.0
     is_folded: bool = False
     is_all_in: bool = False
+    wallet_address: str = ""
     
     def to_dict(self):
         return {
@@ -47,7 +48,8 @@ class Player:
             'hole_cards': [c.to_dict() for c in self.hole_cards],
             'current_bet': self.current_bet,
             'is_folded': self.is_folded,
-            'is_all_in': self.is_all_in
+            'is_all_in': self.is_all_in,
+            'wallet_address': self.wallet_address
         }
 
 
@@ -58,13 +60,27 @@ class CommitRevealDeck:
         self.deck = []
         self.deck_index = 0
         self.commitment = None
+        self.is_committed = False
+        self.is_revealed = False
         
-    def generate_server_seed(self) -> str:
+    def generate_commitment(self) -> str:
         self.server_seed = secrets.token_hex(32)
         self.commitment = hashlib.sha256(self.server_seed.encode()).hexdigest()
+        self.is_committed = True
+        self.is_revealed = False
+        return self.commitment
+    
+    def get_commitment(self) -> str:
+        if not self.is_committed:
+            return self.generate_commitment()
         return self.commitment
     
     def reveal_and_shuffle(self, client_seed: str) -> bool:
+        if not self.is_committed:
+            raise ValueError("Must generate commitment before revealing")
+        if self.is_revealed:
+            raise ValueError("Already revealed for this hand")
+        
         self.client_seed = client_seed
         combined = self.server_seed + client_seed
         seed_hash = hashlib.sha256(combined.encode()).digest()
@@ -77,7 +93,21 @@ class CommitRevealDeck:
         random.shuffle(self.deck)
         
         self.deck_index = 0
+        self.is_revealed = True
         return True
+    
+    def verify_commitment(self, server_seed: str, claimed_commitment: str) -> bool:
+        expected = hashlib.sha256(server_seed.encode()).hexdigest()
+        return expected == claimed_commitment
+    
+    def reset(self):
+        self.server_seed = None
+        self.client_seed = None
+        self.deck = []
+        self.deck_index = 0
+        self.commitment = None
+        self.is_committed = False
+        self.is_revealed = False
     
     def deal_card(self) -> Optional[Card]:
         if self.deck_index >= len(self.deck):
@@ -230,8 +260,18 @@ class PokerGame:
         self.players.append(player)
         return player
     
+    def request_commitment(self) -> str:
+        self.deck.reset()
+        return self.deck.generate_commitment()
+    
     def start_hand(self, client_seed: str) -> Dict:
-        self.deck.generate_server_seed()
+        if self.deck.is_revealed:
+            self.deck.reset()
+            self.deck.generate_commitment()
+        
+        if not self.deck.is_committed:
+            self.deck.generate_commitment()
+        
         self.deck.reveal_and_shuffle(client_seed)
         
         self.community_cards = []

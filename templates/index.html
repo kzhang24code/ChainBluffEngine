@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ChainBluff - Poker Engine</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>♠️</text></svg>">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.6.1/socket.io.min.js"></script>
     <style>
@@ -215,6 +216,20 @@
                 document.getElementById('lobby').classList.add('hidden');
                 document.getElementById('gameArea').classList.remove('hidden');
                 addLog('Game created! Session: ' + sessionId.substring(0, 8) + '...');
+                if (data.commitment) {
+                    document.getElementById('commitment').textContent = 
+                        data.commitment.substring(0, 32) + '...';
+                    addLog('Server committed: ' + data.commitment.substring(0, 16) + '...');
+                }
+            });
+            
+            socket.on('commitment_ready', (data) => {
+                if (data.commitment) {
+                    document.getElementById('commitment').textContent = 
+                        data.commitment.substring(0, 32) + '...';
+                    addLog('Commitment received: ' + data.commitment.substring(0, 16) + '...');
+                    onCommitmentReady();
+                }
             });
 
             socket.on('hand_started', (data) => {
@@ -270,8 +285,23 @@
             socket.emit('create_game', { name: playerName });
         }
 
+        let pendingCommitment = false;
+        
         function startNewHand() {
-            const clientSeed = Math.random().toString(36).substring(2);
+            if (pendingCommitment) {
+                addLog('Waiting for commitment...');
+                return;
+            }
+            pendingCommitment = true;
+            addLog('Requesting server commitment...');
+            socket.emit('request_commitment', { session_id: sessionId });
+        }
+        
+        function onCommitmentReady() {
+            pendingCommitment = false;
+            const clientSeed = Math.random().toString(36).substring(2) + 
+                               Math.random().toString(36).substring(2);
+            addLog('Providing client seed and starting hand...');
             socket.emit('start_hand', { 
                 session_id: sessionId,
                 client_seed: clientSeed
@@ -347,7 +377,13 @@
             const evColor = data.weighted_ev >= 0 ? 'text-green-400' : 'text-red-400';
             const evSign = data.weighted_ev >= 0 ? '+' : '';
             
+            const equityPct = data.equity ? (data.equity * 100).toFixed(1) : '50.0';
+            
             let html = `
+                <div class="bg-gray-700/50 rounded-lg p-3">
+                    <div class="text-sm text-gray-400 mb-1">Hand Equity</div>
+                    <div class="text-xl font-bold text-blue-400">${equityPct}%</div>
+                </div>
                 <div class="bg-gray-700/50 rounded-lg p-3">
                     <div class="text-sm text-gray-400 mb-1">Expected Value</div>
                     <div class="text-2xl font-bold ${evColor}">${evSign}$${data.weighted_ev.toFixed(2)}</div>

@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 
 from src.models import init_db, get_session as get_db_session, GameState, HandHistory
 from src.poker_engine import PokerGame, Card
-from src.cfr_strategy import CFRAgent, create_info_set
+from src.cfr_strategy import CFRAgent, create_info_set, estimate_hand_equity
 from src.blockchain_bridge import BlockchainBridge
 
 load_dotenv()
@@ -77,9 +77,18 @@ def handle_create_game(data):
     
     join_room(session_id)
     
+    commitment = game.request_commitment()
+    
+    if blockchain.is_connected():
+        try:
+            blockchain.commit_hand(session_id, commitment)
+        except Exception as e:
+            print(f"Blockchain commit failed: {e}")
+    
     emit('game_created', {
         'session_id': session_id,
-        'message': f'Game created! Session: {session_id}'
+        'message': f'Game created! Session: {session_id}',
+        'commitment': commitment
     })
 
 
@@ -100,6 +109,30 @@ def handle_join_table(data):
     emit('joined_table', game.get_state(), room=session_id)
 
 
+@socketio.on('request_commitment')
+def handle_request_commitment(data):
+    session_id = data.get('session_id')
+    
+    if session_id not in games:
+        emit('error', {'message': 'Game not found'})
+        return
+    
+    game = games[session_id]
+    commitment = game.request_commitment()
+    
+    if blockchain.is_connected():
+        try:
+            blockchain.commit_hand(session_id, commitment)
+        except Exception as e:
+            print(f"Blockchain commit failed: {e}")
+    
+    emit('commitment_ready', {
+        'session_id': session_id,
+        'commitment': commitment,
+        'message': 'Server committed. Please provide your client seed.'
+    })
+
+
 @socketio.on('start_hand')
 def handle_start_hand(data):
     session_id = data.get('session_id')
@@ -110,6 +143,11 @@ def handle_start_hand(data):
         return
     
     game = games[session_id]
+    
+    if not game.deck.is_committed:
+        emit('error', {'message': 'Server must commit first. Request commitment.'})
+        return
+    
     state = game.start_hand(client_seed)
     
     for player in game.players:
@@ -190,15 +228,15 @@ def _process_ai_turn(session_id: str, game: PokerGame):
         'check': 'check',
         'call': 'call',
         'fold': 'fold',
-        'raise_small': 'raise',
-        'raise_big': 'raise',
+        'raise_half': 'raise',
+        'raise_pot': 'raise',
         'all_in': 'all_in'
     }
     
     amount = 0
-    if action == 'raise_small':
+    if action == 'raise_half':
         amount = game.pot * 0.5
-    elif action == 'raise_big':
+    elif action == 'raise_pot':
         amount = game.pot
     
     import time
@@ -248,11 +286,18 @@ def handle_gto_advice(data):
         game.stage
     )
     
+    hand_equity = estimate_hand_equity(
+        player.hole_cards,
+        game.community_cards,
+        game.stage
+    )
+    
     ev_analysis = cfr_agent.calculate_ev(
         info_set,
         game.pot,
         game.current_bet - player.current_bet,
-        player.chips
+        player.chips,
+        hand_equity
     )
     
     emit('gto_advice', ev_analysis)
@@ -278,6 +323,25 @@ def _save_hand_history(game: PokerGame, winner_result: dict):
         db_session.add(history)
         db_session.commit()
         db_session.close()
+        
+        if blockchain.is_connected():
+            try:
+                winner_id = winner_result['winner']['id']
+                winner_player = next((p for p in game.players if p.id == winner_id), None)
+                winner_address = winner_player.wallet_address if winner_player and winner_player.wallet_address else None
+                
+                if winner_address and winner_address.startswith('0x') and len(winner_address) == 42:
+                    blockchain.reveal_and_payout(
+                        game.session_id,
+                        winner_address,
+                        game.deck.server_seed,
+                        game.deck.client_seed
+                    )
+                else:
+                    print(f"Skipping blockchain payout - no valid wallet address for winner")
+            except Exception as e:
+                print(f"Blockchain payout failed: {e}")
+                
     except Exception as e:
         print(f"Error saving hand history: {e}")
 

@@ -65,9 +65,25 @@ Uses SQLite with SQLAlchemy ORM. Tables:
 - `game_states`: Active game sessions
 - `hand_history`: Completed hands for provability
 
+## Commit-Reveal Protocol Flow
+1. When user creates a game or requests a new hand, server generates commitment (hash of server seed)
+2. Server emits `commitment_ready` event with the commitment
+3. User provides client seed after seeing the commitment
+4. Server reveals server seed and shuffles deck using `hash(server_seed + client_seed)`
+5. At showdown, fairness proof is provided for verification
+
+## GTO Advisor
+The GTO panel shows:
+- Hand Equity: Estimated win probability based on hole cards
+- Expected Value (EV): Weighted expected return for each action
+- Recommended Action: Best action based on CFR strategy
+- Strategy Distribution: Probability weights for each action
+
 ## Recent Changes
 - Initial project setup (January 2026)
-- Implemented poker engine with Commit-Reveal
-- Created CFR AI agent with training capability
-- Built blockchain bridge for Ethereum integration
-- Developed single-page UI with Tailwind CSS
+- Implemented poker engine with Commit-Reveal fairness protocol
+- Created CFR AI agent with proper game-tree traversal and regret matching
+- Built blockchain bridge for Ethereum integration with commit/reveal/payout
+- Developed single-page UI with Tailwind CSS and WebSocket integration
+- Added hand equity estimation and GTO advice panel
+- Implemented event-driven commit-reveal flow on frontend
