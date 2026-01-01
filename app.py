@@ -197,6 +197,8 @@ def handle_bet_action(data):
 
 
 def _process_ai_turn(session_id: str, game: PokerGame):
+    print(f"[AI TURN] Checking AI turn, current_player_index={game.current_player_index}, stage={game.stage}")
+    
     ai_player = None
     for player in game.players:
         if player.id.startswith('ai_') and not player.is_folded:
@@ -204,11 +206,17 @@ def _process_ai_turn(session_id: str, game: PokerGame):
             break
     
     if not ai_player:
+        print("[AI TURN] No active AI player found")
         return
     
     current_player = game.players[game.current_player_index]
+    print(f"[AI TURN] Current player: {current_player.id}, AI player: {ai_player.id}")
+    
     if current_player.id != ai_player.id:
+        print(f"[AI TURN] Not AI's turn, returning")
         return
+    
+    print(f"[AI TURN] AI is taking action!")
     
     info_set = create_info_set(
         ai_player.hole_cards,

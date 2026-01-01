@@ -117,7 +117,12 @@ class CommitRevealDeck:
         return card
     
     def deal_cards(self, count: int) -> List[Card]:
-        return [self.deal_card() for _ in range(count)]
+        cards = []
+        for _ in range(count):
+            card = self.deal_card()
+            if card is not None:
+                cards.append(card)
+        return cards
     
     def verify_fairness(self) -> Dict:
         return {
