@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChainBluff - Poker Engine</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.6.1/socket.io.min.js"></script>
+    <style>
+        .card {
+            font-family: 'Courier New', monospace;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 60px;
+            height: 84px;
+            border-radius: 8px;
+            font-size: 1.5rem;
+            font-weight: bold;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            transition: transform 0.2s;
+        }
+        .card:hover {
+            transform: translateY(-5px);
+        }
+        .card-hearts, .card-diamonds {
+            color: #dc2626;
+            background: linear-gradient(145deg, #ffffff, #f3f3f3);
+        }
+        .card-spades, .card-clubs {
+            color: #1f2937;
+            background: linear-gradient(145deg, #ffffff, #f3f3f3);
+        }
+        .card-back {
+            background: linear-gradient(135deg, #1e40af, #3b82f6);
+            color: transparent;
+        }
+        .felt-table {
+            background: linear-gradient(145deg, #166534, #15803d);
+            border: 12px solid #78350f;
+            border-radius: 180px;
+        }
+        .chip-pot {
+            background: linear-gradient(145deg, #fcd34d, #f59e0b);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.4);
+        }
+        .gto-panel {
+            background: linear-gradient(145deg, #1f2937, #111827);
+        }
+        @keyframes pulse-glow {
+            0%, 100% { box-shadow: 0 0 5px #22c55e; }
+            50% { box-shadow: 0 0 20px #22c55e; }
+        }
+        .active-player {
+            animation: pulse-glow 1.5s infinite;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 min-h-screen text-white">
+    <div class="container mx-auto px-4 py-8">
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-bold bg-gradient-to-r from-yellow-400 to-orange-500 bg-clip-text text-transparent">
+                ChainBluff Engine
+            </h1>
+            <p class="text-gray-400 mt-2">Poker AI with Cryptographic Fairness</p>
+        </header>
+
+        <div id="lobby" class="max-w-md mx-auto">
+            <div class="bg-gray-800 rounded-xl p-8 shadow-2xl">
+                <h2 class="text-2xl font-semibold mb-6 text-center">Join the Table</h2>
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm text-gray-400 mb-2">Your Name</label>
+                        <input type="text" id="playerName" placeholder="Enter your name"
+                            class="w-full px-4 py-3 bg-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500">
+                    </div>
+                    <button id="createGameBtn"
+                        class="w-full py-3 bg-gradient-to-r from-green-500 to-emerald-600 rounded-lg font-semibold hover:from-green-600 hover:to-emerald-700 transition-all">
+                        Create Game
+                    </button>
+                </div>
+                <div class="mt-6 text-center">
+                    <p id="connectionStatus" class="text-sm text-gray-500">Connecting...</p>
+                </div>
+            </div>
+        </div>
+
+        <div id="gameArea" class="hidden">
+            <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                <div class="lg:col-span-3">
+                    <div class="felt-table p-8 min-h-[500px] relative">
+                        <div class="absolute top-4 left-1/2 transform -translate-x-1/2">
+                            <div id="aiPlayer" class="text-center">
+                                <div class="bg-gray-800/80 rounded-lg px-4 py-2 mb-2">
+                                    <span class="font-semibold">AI Opponent</span>
+                                    <span id="aiChips" class="ml-2 text-yellow-400">$1000</span>
+                                </div>
+                                <div id="aiCards" class="flex gap-2 justify-center">
+                                    <div class="card card-back">?</div>
+                                    <div class="card card-back">?</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center">
+                            <div id="communityCards" class="flex gap-3 justify-center mb-4">
+                            </div>
+                            <div class="chip-pot rounded-full px-6 py-3 text-gray-900 font-bold text-xl">
+                                Pot: $<span id="potAmount">0</span>
+                            </div>
+                            <div id="gameStage" class="mt-2 text-white/80 text-sm uppercase tracking-wider">Preflop</div>
+                        </div>
+
+                        <div class="absolute bottom-4 left-1/2 transform -translate-x-1/2">
+                            <div id="humanPlayer" class="text-center">
+                                <div id="playerCards" class="flex gap-2 justify-center mb-2">
+                                </div>
+                                <div class="bg-gray-800/80 rounded-lg px-4 py-2">
+                                    <span id="playerName" class="font-semibold">You</span>
+                                    <span id="playerChips" class="ml-2 text-yellow-400">$1000</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="actionPanel" class="mt-4 flex flex-wrap gap-3 justify-center">
+                        <button onclick="doAction('fold')" 
+                            class="px-6 py-3 bg-red-600 hover:bg-red-700 rounded-lg font-semibold transition-all">
+                            Fold
+                        </button>
+                        <button onclick="doAction('check')" 
+                            class="px-6 py-3 bg-gray-600 hover:bg-gray-700 rounded-lg font-semibold transition-all">
+                            Check
+                        </button>
+                        <button onclick="doAction('call')" 
+                            class="px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg font-semibold transition-all">
+                            Call
+                        </button>
+                        <div class="flex items-center gap-2">
+                            <input type="number" id="raiseAmount" value="20" min="1"
+                                class="w-24 px-3 py-3 bg-gray-700 rounded-lg text-center">
+                            <button onclick="doAction('raise')" 
+                                class="px-6 py-3 bg-yellow-600 hover:bg-yellow-700 rounded-lg font-semibold transition-all">
+                                Raise
+                            </button>
+                        </div>
+                        <button onclick="doAction('all_in')" 
+                            class="px-6 py-3 bg-purple-600 hover:bg-purple-700 rounded-lg font-semibold transition-all">
+                            All In
+                        </button>
+                    </div>
+
+                    <div class="mt-4 flex gap-3 justify-center">
+                        <button id="newHandBtn"
+                            class="px-6 py-3 bg-green-600 hover:bg-green-700 rounded-lg font-semibold transition-all">
+                            Deal New Hand
+                        </button>
+                        <button onclick="requestGtoAdvice()"
+                            class="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 rounded-lg font-semibold transition-all">
+                            Get GTO Advice
+                        </button>
+                    </div>
+                </div>
+
+                <div class="lg:col-span-1">
+                    <div class="gto-panel rounded-xl p-6 shadow-xl">
+                        <h3 class="text-xl font-bold mb-4 text-green-400">GTO Advisor</h3>
+                        <div id="gtoContent" class="space-y-4">
+                            <p class="text-gray-400 text-sm">Click "Get GTO Advice" for AI-powered strategy recommendations</p>
+                        </div>
+                    </div>
+
+                    <div class="mt-4 bg-gray-800 rounded-xl p-6">
+                        <h3 class="text-lg font-semibold mb-3">Fairness Proof</h3>
+                        <div id="fairnessInfo" class="text-xs text-gray-400 break-all">
+                            <p><span class="text-gray-500">Commitment:</span></p>
+                            <p id="commitment" class="font-mono">-</p>
+                        </div>
+                    </div>
+
+                    <div class="mt-4 bg-gray-800 rounded-xl p-6">
+                        <h3 class="text-lg font-semibold mb-3">Game Log</h3>
+                        <div id="gameLog" class="text-sm text-gray-400 max-h-48 overflow-y-auto space-y-1">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let socket;
+        let sessionId = null;
+        let playerName = 'Player';
+
+        function init() {
+            socket = io();
+
+            socket.on('connect', () => {
+                document.getElementById('connectionStatus').textContent = 'Connected';
+                document.getElementById('connectionStatus').className = 'text-sm text-green-500';
+            });
+
+            socket.on('disconnect', () => {
+                document.getElementById('connectionStatus').textContent = 'Disconnected';
+                document.getElementById('connectionStatus').className = 'text-sm text-red-500';
+            });
+
+            socket.on('connected', (data) => {
+                console.log('Socket connected:', data.sid);
+            });
+
+            socket.on('game_created', (data) => {
+                sessionId = data.session_id;
+                document.getElementById('lobby').classList.add('hidden');
+                document.getElementById('gameArea').classList.remove('hidden');
+                addLog('Game created! Session: ' + sessionId.substring(0, 8) + '...');
+            });
+
+            socket.on('hand_started', (data) => {
+                updateGameState(data);
+                if (data.your_cards) {
+                    renderPlayerCards(data.your_cards);
+                }
+                addLog('New hand dealt');
+            });
+
+            socket.on('game_state', (data) => {
+                updateGameState(data);
+            });
+
+            socket.on('action_result', (data) => {
+                updateGameState(data);
+                if (data.your_cards) {
+                    renderPlayerCards(data.your_cards);
+                }
+            });
+
+            socket.on('ai_action', (data) => {
+                addLog(`AI: ${data.action}${data.amount > 0 ? ' $' + data.amount.toFixed(0) : ''}`);
+            });
+
+            socket.on('showdown', (data) => {
+                const winner = data.winner.id === socket.id ? 'You' : 'AI';
+                addLog(`Winner: ${winner} with ${data.hand_rank} - Pot: $${data.pot}`);
+                
+                if (data.fairness_proof) {
+                    document.getElementById('commitment').textContent = 
+                        data.fairness_proof.commitment.substring(0, 32) + '...';
+                }
+
+                alert(`${winner} wins $${data.pot} with ${data.hand_rank}!`);
+            });
+
+            socket.on('gto_advice', (data) => {
+                renderGtoAdvice(data);
+            });
+
+            socket.on('error', (data) => {
+                addLog('Error: ' + data.message);
+                console.error(data);
+            });
+
+            document.getElementById('createGameBtn').addEventListener('click', createGame);
+            document.getElementById('newHandBtn').addEventListener('click', startNewHand);
+        }
+
+        function createGame() {
+            playerName = document.getElementById('playerName').value || 'Player';
+            socket.emit('create_game', { name: playerName });
+        }
+
+        function startNewHand() {
+            const clientSeed = Math.random().toString(36).substring(2);
+            socket.emit('start_hand', { 
+                session_id: sessionId,
+                client_seed: clientSeed
+            });
+        }
+
+        function doAction(action) {
+            const amount = parseFloat(document.getElementById('raiseAmount').value) || 0;
+            socket.emit('bet_action', {
+                session_id: sessionId,
+                action: action,
+                amount: amount
+            });
+            addLog(`You: ${action}${amount > 0 && action === 'raise' ? ' $' + amount : ''}`);
+        }
+
+        function requestGtoAdvice() {
+            socket.emit('get_gto_advice', { session_id: sessionId });
+        }
+
+        function updateGameState(data) {
+            document.getElementById('potAmount').textContent = data.pot.toFixed(0);
+            document.getElementById('gameStage').textContent = data.stage;
+
+            if (data.commitment) {
+                document.getElementById('commitment').textContent = 
+                    data.commitment.substring(0, 32) + '...';
+            }
+
+            renderCommunityCards(data.community_cards || []);
+
+            if (data.players) {
+                data.players.forEach(player => {
+                    if (player.id === socket.id || player.name === playerName) {
+                        document.getElementById('playerChips').textContent = '$' + player.chips.toFixed(0);
+                    } else {
+                        document.getElementById('aiChips').textContent = '$' + player.chips.toFixed(0);
+                    }
+                });
+            }
+        }
+
+        function renderCard(card) {
+            const suitSymbols = { 'h': '♥', 'd': '♦', 'c': '♣', 's': '♠' };
+            const suitClasses = { 
+                'h': 'card-hearts', 
+                'd': 'card-diamonds', 
+                'c': 'card-clubs', 
+                's': 'card-spades' 
+            };
+            return `<div class="card ${suitClasses[card.suit]}">
+                ${card.rank}${suitSymbols[card.suit]}
+            </div>`;
+        }
+
+        function renderPlayerCards(cards) {
+            const container = document.getElementById('playerCards');
+            container.innerHTML = cards.map(renderCard).join('');
+        }
+
+        function renderCommunityCards(cards) {
+            const container = document.getElementById('communityCards');
+            if (cards.length === 0) {
+                container.innerHTML = '';
+                return;
+            }
+            container.innerHTML = cards.map(renderCard).join('');
+        }
+
+        function renderGtoAdvice(data) {
+            const container = document.getElementById('gtoContent');
+            
+            const evColor = data.weighted_ev >= 0 ? 'text-green-400' : 'text-red-400';
+            const evSign = data.weighted_ev >= 0 ? '+' : '';
+            
+            let html = `
+                <div class="bg-gray-700/50 rounded-lg p-3">
+                    <div class="text-sm text-gray-400 mb-1">Expected Value</div>
+                    <div class="text-2xl font-bold ${evColor}">${evSign}$${data.weighted_ev.toFixed(2)}</div>
+                </div>
+                <div class="bg-gray-700/50 rounded-lg p-3">
+                    <div class="text-sm text-gray-400 mb-1">Recommended Action</div>
+                    <div class="text-xl font-bold text-yellow-400 capitalize">${data.recommended_action.replace('_', ' ')}</div>
+                    <div class="text-xs text-gray-500 mt-1">Confidence: ${(data.confidence * 100).toFixed(1)}%</div>
+                </div>
+                <div>
+                    <div class="text-sm text-gray-400 mb-2">Strategy Distribution</div>
+            `;
+            
+            for (const [action, prob] of Object.entries(data.strategy)) {
+                const percentage = (prob * 100).toFixed(1);
+                if (prob > 0.01) {
+                    html += `
+                        <div class="flex items-center gap-2 mb-1">
+                            <span class="w-20 text-xs capitalize">${action.replace('_', ' ')}</span>
+                            <div class="flex-1 bg-gray-700 rounded-full h-2">
+                                <div class="bg-green-500 rounded-full h-2" style="width: ${percentage}%"></div>
+                            </div>
+                            <span class="text-xs text-gray-500 w-12 text-right">${percentage}%</span>
+                        </div>
+                    `;
+                }
+            }
+            
+            html += '</div>';
+            container.innerHTML = html;
+        }
+
+        function addLog(message) {
+            const log = document.getElementById('gameLog');
+            const entry = document.createElement('div');
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            log.insertBefore(entry, log.firstChild);
+        }
+
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
