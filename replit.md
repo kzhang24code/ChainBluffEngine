@@ -87,3 +87,8 @@ The GTO panel shows:
 - Developed single-page UI with Tailwind CSS and WebSocket integration
 - Added hand equity estimation and GTO advice panel
 - Implemented event-driven commit-reveal flow on frontend
+- Added Random Swap button to swap seats with AI
+- Enhanced game log with color-coded entries, better scrolling, and improved visibility
+- Added separate bet chip indicators on table before pot collection
+- Fold now shows overlay on cards instead of popup alert
+- Showdown results display in game log instead of popup

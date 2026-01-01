@@ -55,6 +55,32 @@
         .active-player {
             animation: pulse-glow 1.5s infinite;
         }
+        .bet-chip {
+            background: linear-gradient(145deg, #ef4444, #b91c1c);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
+        }
+        .folded-overlay {
+            background: rgba(0, 0, 0, 0.7);
+            animation: fadeIn 0.3s ease-in;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        .game-log {
+            scrollbar-width: thin;
+            scrollbar-color: #4b5563 #1f2937;
+        }
+        .game-log::-webkit-scrollbar {
+            width: 6px;
+        }
+        .game-log::-webkit-scrollbar-track {
+            background: #1f2937;
+        }
+        .game-log::-webkit-scrollbar-thumb {
+            background: #4b5563;
+            border-radius: 3px;
+        }
     </style>
 </head>
 <body class="bg-gray-900 min-h-screen text-white">
@@ -91,14 +117,22 @@
                 <div class="lg:col-span-3">
                     <div class="felt-table p-8 min-h-[500px] relative">
                         <div class="absolute top-4 left-1/2 transform -translate-x-1/2">
-                            <div id="aiPlayer" class="text-center">
+                            <div id="aiPlayer" class="text-center relative">
                                 <div class="bg-gray-800/80 rounded-lg px-4 py-2 mb-2">
                                     <span class="font-semibold">AI Opponent</span>
                                     <span id="aiChips" class="ml-2 text-yellow-400">$1000</span>
                                 </div>
-                                <div id="aiCards" class="flex gap-2 justify-center">
+                                <div id="aiCards" class="flex gap-2 justify-center relative">
                                     <div class="card card-back">?</div>
                                     <div class="card card-back">?</div>
+                                    <div id="aiFoldedOverlay" class="hidden absolute inset-0 folded-overlay rounded-lg flex items-center justify-center">
+                                        <span class="text-red-500 font-bold text-xl">FOLDED</span>
+                                    </div>
+                                </div>
+                                <div id="aiBet" class="mt-2 hidden">
+                                    <div class="bet-chip rounded-full px-3 py-1 text-white text-sm font-bold inline-block">
+                                        $<span id="aiBetAmount">0</span>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -114,10 +148,18 @@
 
                         <div class="absolute bottom-4 left-1/2 transform -translate-x-1/2">
                             <div id="humanPlayer" class="text-center">
-                                <div id="playerCards" class="flex gap-2 justify-center mb-2">
+                                <div id="playerBet" class="mb-2 hidden">
+                                    <div class="bet-chip rounded-full px-3 py-1 text-white text-sm font-bold inline-block">
+                                        $<span id="playerBetAmount">0</span>
+                                    </div>
+                                </div>
+                                <div id="playerCards" class="flex gap-2 justify-center mb-2 relative">
+                                    <div id="playerFoldedOverlay" class="hidden absolute inset-0 folded-overlay rounded-lg flex items-center justify-center">
+                                        <span class="text-red-500 font-bold text-xl">FOLDED</span>
+                                    </div>
                                 </div>
                                 <div class="bg-gray-800/80 rounded-lg px-4 py-2">
-                                    <span id="playerName" class="font-semibold">You</span>
+                                    <span id="playerNameDisplay" class="font-semibold">You</span>
                                     <span id="playerChips" class="ml-2 text-yellow-400">$1000</span>
                                 </div>
                             </div>
@@ -160,6 +202,10 @@
                             class="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 rounded-lg font-semibold transition-all">
                             Get GTO Advice
                         </button>
+                        <button onclick="randomSwap()"
+                            class="px-6 py-3 bg-orange-600 hover:bg-orange-700 rounded-lg font-semibold transition-all">
+                            Random Swap
+                        </button>
                     </div>
                 </div>
 
@@ -179,9 +225,12 @@
                         </div>
                     </div>
 
-                    <div class="mt-4 bg-gray-800 rounded-xl p-6">
-                        <h3 class="text-lg font-semibold mb-3">Game Log</h3>
-                        <div id="gameLog" class="text-sm text-gray-400 max-h-48 overflow-y-auto space-y-1">
+                    <div class="mt-4 bg-gray-800 rounded-xl p-4">
+                        <h3 class="text-lg font-semibold mb-3 flex items-center gap-2">
+                            <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                            Game Log
+                        </h3>
+                        <div id="gameLog" class="game-log text-sm max-h-64 overflow-y-auto space-y-1 bg-gray-900/50 rounded-lg p-3">
                         </div>
                     </div>
                 </div>
@@ -252,19 +301,36 @@
             });
 
             socket.on('ai_action', (data) => {
-                addLog(`AI: ${data.action}${data.amount > 0 ? ' $' + data.amount.toFixed(0) : ''}`);
+                addLog(`AI: ${data.action}${data.amount > 0 ? ' $' + data.amount.toFixed(0) : ''}`, data.action);
+                if (data.action === 'fold') {
+                    document.getElementById('aiFoldedOverlay').classList.remove('hidden');
+                } else if (data.amount > 0) {
+                    updateBet('ai', data.amount);
+                }
             });
 
             socket.on('showdown', (data) => {
                 const winner = data.winner.id === socket.id ? 'You' : 'AI';
-                addLog(`Winner: ${winner} with ${data.hand_rank} - Pot: $${data.pot}`);
+                addLog(`SHOWDOWN: ${winner} wins $${data.pot} with ${data.hand_rank}!`, 'winner');
                 
                 if (data.fairness_proof) {
                     document.getElementById('commitment').textContent = 
                         data.fairness_proof.commitment.substring(0, 32) + '...';
                 }
-
-                alert(`${winner} wins $${data.pot} with ${data.hand_rank}!`);
+                
+                clearBets();
+                clearFolded();
+            });
+            
+            socket.on('player_folded', (data) => {
+                const isAi = data.player_id !== socket.id;
+                if (isAi) {
+                    document.getElementById('aiFoldedOverlay').classList.remove('hidden');
+                    addLog('AI folded!', 'fold');
+                } else {
+                    document.getElementById('playerFoldedOverlay').classList.remove('hidden');
+                    addLog('You folded', 'fold');
+                }
             });
 
             socket.on('gto_advice', (data) => {
@@ -302,6 +368,8 @@
             const clientSeed = Math.random().toString(36).substring(2) + 
                                Math.random().toString(36).substring(2);
             addLog('Providing client seed and starting hand...');
+            clearBets();
+            clearFolded();
             socket.emit('start_hand', { 
                 session_id: sessionId,
                 client_seed: clientSeed
@@ -315,7 +383,47 @@
                 action: action,
                 amount: amount
             });
-            addLog(`You: ${action}${amount > 0 && action === 'raise' ? ' $' + amount : ''}`);
+            addLog(`You: ${action}${amount > 0 && action === 'raise' ? ' $' + amount : ''}`, action);
+            if (action === 'fold') {
+                document.getElementById('playerFoldedOverlay').classList.remove('hidden');
+            } else if (amount > 0 || action === 'call') {
+                updateBet('player', amount > 0 ? amount : 10);
+            }
+        }
+        
+        function randomSwap() {
+            const aiPlayer = document.getElementById('aiPlayer');
+            const humanPlayer = document.getElementById('humanPlayer');
+            
+            const aiParent = aiPlayer.parentElement;
+            const humanParent = humanPlayer.parentElement;
+            
+            aiParent.appendChild(humanPlayer);
+            humanParent.appendChild(aiPlayer);
+            
+            addLog('Seats swapped randomly!', 'swap');
+        }
+        
+        function updateBet(player, amount) {
+            if (player === 'ai') {
+                document.getElementById('aiBet').classList.remove('hidden');
+                document.getElementById('aiBetAmount').textContent = amount.toFixed(0);
+            } else {
+                document.getElementById('playerBet').classList.remove('hidden');
+                document.getElementById('playerBetAmount').textContent = amount.toFixed(0);
+            }
+        }
+        
+        function clearBets() {
+            document.getElementById('aiBet').classList.add('hidden');
+            document.getElementById('playerBet').classList.add('hidden');
+            document.getElementById('aiBetAmount').textContent = '0';
+            document.getElementById('playerBetAmount').textContent = '0';
+        }
+        
+        function clearFolded() {
+            document.getElementById('aiFoldedOverlay').classList.add('hidden');
+            document.getElementById('playerFoldedOverlay').classList.add('hidden');
         }
 
         function requestGtoAdvice() {
@@ -416,11 +524,30 @@
             container.innerHTML = html;
         }
 
-        function addLog(message) {
+        function addLog(message, type = 'info') {
             const log = document.getElementById('gameLog');
             const entry = document.createElement('div');
-            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            entry.className = 'py-1 px-2 rounded';
+            
+            const typeColors = {
+                'info': 'text-gray-300',
+                'fold': 'text-red-400 bg-red-900/20',
+                'call': 'text-blue-400',
+                'raise': 'text-yellow-400',
+                'check': 'text-gray-400',
+                'winner': 'text-green-400 bg-green-900/30 font-bold',
+                'swap': 'text-orange-400 bg-orange-900/20'
+            };
+            
+            entry.className += ' ' + (typeColors[type] || typeColors['info']);
+            
+            const time = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            entry.innerHTML = `<span class="text-gray-500 text-xs">${time}</span> ${message}`;
             log.insertBefore(entry, log.firstChild);
+            
+            if (log.children.length > 50) {
+                log.removeChild(log.lastChild);
+            }
         }
 
         document.addEventListener('DOMContentLoaded', init);
