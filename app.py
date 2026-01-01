@@ -228,13 +228,19 @@ def _process_ai_turn(session_id: str, game: PokerGame):
         'check': 'check',
         'call': 'call',
         'fold': 'fold',
+        'raise_small': 'raise',
+        'raise_big': 'raise',
         'raise_half': 'raise',
         'raise_pot': 'raise',
         'all_in': 'all_in'
     }
     
     amount = 0
-    if action == 'raise_half':
+    if action == 'raise_small':
+        amount = game.pot * 0.5
+    elif action == 'raise_big':
+        amount = game.pot
+    elif action == 'raise_half':
         amount = game.pot * 0.5
     elif action == 'raise_pot':
         amount = game.pot
