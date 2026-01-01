@@ -349,9 +349,18 @@ class PokerGame:
                 self.current_bet = player.current_bet
         
         self.actions_this_round += 1
+        self._move_to_next_player()
         self._advance_game()
         
         return self.get_state()
+    
+    def _move_to_next_player(self):
+        for _ in range(len(self.players)):
+            self.current_player_index = (self.current_player_index + 1) % len(self.players)
+            next_player = self.players[self.current_player_index]
+            if not next_player.is_folded and not next_player.is_all_in:
+                return
+        self.current_player_index = 0
     
     def _advance_game(self):
         active_players = [p for p in self.players if not p.is_folded]
@@ -367,6 +376,13 @@ class PokerGame:
         
         if betting_complete:
             self._next_stage()
+    
+    def _reset_action_to_first_player(self):
+        for i, player in enumerate(self.players):
+            if not player.is_folded and not player.is_all_in:
+                self.current_player_index = i
+                return
+        self.current_player_index = 0
     
     def _next_stage(self):
         stage_index = self.STAGES.index(self.stage)
@@ -386,6 +402,9 @@ class PokerGame:
                 self.community_cards.extend(self.deck.deal_cards(1))
             elif self.stage == 'showdown':
                 pass
+            
+            if self.stage != 'showdown':
+                self._reset_action_to_first_player()
     
     def determine_winner(self) -> Dict:
         active_players = [p for p in self.players if not p.is_folded]
